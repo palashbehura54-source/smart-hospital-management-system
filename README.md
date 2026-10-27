@@ -11,16 +11,17 @@ A comprehensive, console-based clinical workflow and emergency triage system bui
 
 <div align="center">
   <img src="assets/screenshots/menu.png" width="48%" alt="Main Menu" />
+  <img src="assets/screenshots/patient_table.png" width="48%" alt="Fixed-Width Patient Registry" />
+</div>
+
+<div align="center">
   <img src="assets/screenshots/triage.png" width="48%" alt="Triage Priority Sorting" />
-</div>
-
-<div align="center">
   <img src="assets/screenshots/bed_grid.png" width="48%" alt="2D Ward Bed Matrix" />
-  <img src="assets/screenshots/discharge.png" width="48%" alt="Discharge & Billing Receipt" />
 </div>
 
 <div align="center">
-  <img src="assets/screenshots/summary.png" width="60%" alt="Hospital Analytics Dashboard" />
+  <img src="assets/screenshots/discharge.png" width="48%" alt="Discharge & Billing Receipt" />
+  <img src="assets/screenshots/summary.png" width="48%" alt="Hospital Analytics Dashboard" />
 </div>
 
 ---
@@ -79,9 +80,11 @@ smart-hospital-management-system/
 │   ├── Smart_Hospital_Management_System_Report.docx      # Editable Word manuscript
 │   └── Smart_Hospital_Management_System_Presentation.pptx # 10-slide seminar presentation
 ├── assets/                         # Diagrams and visual media
+│   ├── cu_logo.jpg                 # University emblem
 │   ├── flowchart.png               # High-resolution architectural flowchart
 │   └── screenshots/                # Terminal screenshots captured during execution
 │       ├── menu.png                # Boxed main navigation menu
+│       ├── patient_table.png       # Fixed-width patient registry with truncateText
 │       ├── register.png            # Patient intake interface
 │       ├── triage.png              # Priority-sorted triage queue
 │       ├── bed_grid.png            # 2D ward-bed allocation matrix
