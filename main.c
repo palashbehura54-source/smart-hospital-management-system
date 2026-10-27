@@ -30,12 +30,13 @@
 #define BOX_W 56
 
 /* ── Constants ──────────────────────────────────────────────── */
-#define MAX_DOCTORS   5
-#define MAX_PER_DOC   5
-#define WARDS         3
-#define BEDS_PER_WARD 10
-#define PATIENTS_FILE "patients.dat"
-#define BEDS_FILE     "beds.dat"
+#define DEMO_PATIENT_COUNT 30
+#define MAX_DOCTORS        5
+#define MAX_PER_DOC        5
+#define WARDS              3
+#define BEDS_PER_WARD      10
+#define PATIENTS_FILE      "patients.dat"
+#define BEDS_FILE          "beds.dat"
 
 /* ── Structures ─────────────────────────────────────────────── */
 
@@ -166,6 +167,7 @@ void boxMenuLine(const char *numStr, const char *label,
 
 /* ── Forward declarations ────────────────────────────────────── */
 void  initDoctors(void);
+void  recalculateDoctorLoads(void);
 void  loadBeds(void);
 void  saveBeds(void);
 int   nextPatientId(void);
@@ -318,6 +320,27 @@ void initDoctors(void)
     strcpy(doctors[4].name, "Dr. Nisha Patel");
     strcpy(doctors[4].department, "Pediatrics");
     doctors[4].patientCount = 0;
+}
+
+/* =============================================================
+ *  recalculateDoctorLoads – Tally active patients per doctor
+ * ============================================================= */
+void recalculateDoctorLoads(void)
+{
+    int i;
+    for (i = 0; i < MAX_DOCTORS; i++)
+        doctors[i].patientCount = 0;
+
+    FILE *f = fopen(PATIENTS_FILE, "rb");
+    if (f == NULL) return;
+
+    struct Patient p;
+    while (fread(&p, sizeof(struct Patient), 1, f) == 1) {
+        if (p.status != 2 && p.doctorId >= 1 && p.doctorId <= MAX_DOCTORS) {
+            doctors[p.doctorId - 1].patientCount++;
+        }
+    }
+    fclose(f);
 }
 
 /* =============================================================
@@ -641,45 +664,74 @@ void showBeds(int (*grid)[BEDS_PER_WARD]) /* POINTER USED HERE */
  * ============================================================= */
 void allocateBed(struct Patient *p) /* POINTER USED HERE */
 {
-    int wChoice;
-    showBeds(beds);
-    printf("\n  " CYAN "Choose ward (1=General, 2=ICU, 3=Pediatric): " RESET);
-    scanf("%d", &wChoice); clearInputBuffer();
-    if (wChoice < 1 || wChoice > 3) { printError("Invalid ward number."); return; }
-    int w = wChoice - 1;
-
-    int b, found = -1;
-    for (b = 0; b < BEDS_PER_WARD; b++) {
-        if (beds[w][b] == 0) { found = b; break; }
-    }
-    if (found == -1) { printError("Ward is full. No free beds."); return; }
-
-    beds[w][found] = 1;
-    saveBeds();
-
     FILE *f = fopen(PATIENTS_FILE, "r+b");
     if (f == NULL) { printError("Cannot open patient file."); return; }
+
     struct Patient rec;
     long pos = 0;
+    int foundPatient = 0;
     while (fread(&rec, sizeof(struct Patient), 1, f) == 1) {
         if (rec.id == p->id) {
-            rec.wardNo = w;
-            rec.bedNo  = found;
-            rec.status = 1;
-            fseek(f, pos, SEEK_SET);
-            fwrite(&rec, sizeof(struct Patient), 1, f);
-            p->wardNo = w;
-            p->bedNo  = found;
-            p->status = 1;
+            foundPatient = 1;
             break;
         }
         pos += (long)sizeof(struct Patient);
     }
+
+    if (!foundPatient) {
+        fclose(f);
+        printError("Patient ID not found.");
+        return;
+    }
+    if (rec.status == 1) {
+        fclose(f);
+        printError("Patient is already admitted with an allocated bed.");
+        return;
+    }
+    if (rec.status == 2) {
+        fclose(f);
+        printError("Patient is already discharged.");
+        return;
+    }
+
+    int wChoice;
+    showBeds(beds);
+    printf("\n  " CYAN "Choose ward (1=General, 2=ICU, 3=Pediatric): " RESET);
+    scanf("%d", &wChoice); clearInputBuffer();
+    if (wChoice < 1 || wChoice > 3) {
+        fclose(f);
+        printError("Invalid ward number.");
+        return;
+    }
+    int w = wChoice - 1;
+
+    int b, foundBed = -1;
+    for (b = 0; b < BEDS_PER_WARD; b++) {
+        if (beds[w][b] == 0) { foundBed = b; break; }
+    }
+    if (foundBed == -1) {
+        fclose(f);
+        printError("Ward is full. No free beds.");
+        return;
+    }
+
+    beds[w][foundBed] = 1;
+    saveBeds();
+
+    rec.wardNo = w;
+    rec.bedNo  = foundBed;
+    rec.status = 1;
+    fseek(f, pos, SEEK_SET);
+    fwrite(&rec, sizeof(struct Patient), 1, f);
     fclose(f);
+
+    p->wardNo = w;
+    p->bedNo  = foundBed;
+    p->status = 1;
 
     {
         char buf[60];
-        sprintf(buf, "Bed allocated: Ward %d, Bed %d", w + 1, found + 1);
+        sprintf(buf, "Bed allocated: Ward %d, Bed %d", w + 1, foundBed + 1);
         printSuccess(buf);
     }
 }
@@ -762,6 +814,8 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
             if (rec.wardNo >= 0 && rec.bedNo >= 0) {
                 beds[rec.wardNo][rec.bedNo] = 0;
                 saveBeds();
+                rec.wardNo = -1;
+                rec.bedNo  = -1;
             }
 
             /* Build charges array for recursive totalBill */
@@ -1056,10 +1110,18 @@ void displayAll(void)
         const char *col  = (p.priority == 1) ? RED : GREEN;
         const char *stat = (p.status == 0) ? "Waiting"
                          : (p.status == 1) ? "Admitted" : "Discharged";
+        char wardStr[8], bedStr[8];
+        if (p.wardNo >= 0 && p.bedNo >= 0) {
+            sprintf(wardStr, "%d", p.wardNo + 1);
+            sprintf(bedStr, "%d", p.bedNo + 1);
+        } else {
+            strcpy(wardStr, "-");
+            strcpy(bedStr, "-");
+        }
         printf("  %s%-4d" RESET " %-20s %-4d %-3c %-14s "
-               "%s%-5d" RESET " %-11s %-5d %-4d\n",
+               "%s%-5d" RESET " %-11s %-5s %-4s\n",
                col, p.id, p.name, p.age, p.gender, p.disease,
-               col, p.priority, stat, p.wardNo + 1, p.bedNo + 1);
+               col, p.priority, stat, wardStr, bedStr);
         count++;
     }
     fclose(f);
@@ -1167,53 +1229,218 @@ void hospitalSummary(void)
 }
 
 /* =============================================================
- *  loadDemoPatients – Hidden option 99; loads 5 demo patients
+ *  loadDemoPatients – Hidden option 99; loads 30 demo patients
  * ============================================================= */
 void loadDemoPatients(void)
 {
+    printWarning("This will reset all current patient records and bed allocations!");
+    printf("  " YELLOW "Are you sure you want to load 30 demo patients? (y/n): " RESET);
+    char ans[16];
+    if (fgets(ans, sizeof(ans), stdin) == NULL) return;
+    if (ans[0] != 'y' && ans[0] != 'Y') {
+        printWarning("Demo data loading cancelled. Current records preserved.");
+        return;
+    }
+
     remove(PATIENTS_FILE);
 
-    int w, b;
+    int w, b, d;
     for (w = 0; w < WARDS; w++)
         for (b = 0; b < BEDS_PER_WARD; b++)
             beds[w][b] = 0;
 
-    struct Patient demos[5];
-    const char *names[5]    = {"Amit Sharma",   "Riya Gupta",
-                               "Rahul Nair",    "Sunita Rao",    "Vikas Jain"};
-    const char *diseases[5] = {"Chest Pain",    "Fever",
-                               "Fracture",      "Diabetes",      "Appendicitis"};
-    int   ages[5]    = {45, 28, 35, 60, 30};
-    char  genders[5] = {'M', 'F', 'M', 'F', 'M'};
-    int   prios[5]   = {1, 2, 2, 2, 1};
+    for (d = 0; d < MAX_DOCTORS; d++)
+        doctors[d].patientCount = 0;
+
+    const char *names[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        "Amit Sharma",       "Sunita Rao",        "Vikram Malhotra",
+        "Pooja Verma",       "Harpreet Singh",    "Rajesh Khanna",
+        "Meera Nambiar",     "Gurdeep Dhillon",   "Kavita Saxena",
+        "Anil Deshmukh",     "Aarav Gupta",       "Diya Sengupta",
+        "Kabir Joshi",       "Ananya Nair",       "Vihaan Chadha",
+        /* Waiting (10) */
+        "Rohan Sethi",       "Siddharth Bhatia",  "Deepak Chopra",
+        "Fatima Sheikh",     "Neha Agarwal",      "Manish Tiwari",
+        "Jaspreet Kaur",     "Sanjay Kulkarni",   "Ritu Choudhary",
+        "Kiran Patel",
+        /* Discharged (5) */
+        "Prakash Goswami",   "Kalyani Iyer",      "Tarun Chatterjee",
+        "Shalini Mishra",    "Rameshwar Prasad"
+    };
+
+    const char *diseases[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        "Acute Myocardial Infarction", "Type 2 Diabetes Flare",    "Hypertensive Crisis",
+        "Severe Gastroenteritis",      "Compound Tibia Fracture",   "Cardiogenic Shock",
+        "Acute Respiratory Distress",  "Septicemia",                "Acute Ischemic Stroke",
+        "Post-Cardiac Bypass Care",    "Severe Bronchopneumonia",   "Dengue with Shock",
+        "Acute Asthma Exacerbation",   "Rotavirus Dehydration",     "Pediatric Radius Fracture",
+        /* Waiting (10) */
+        "Multiple Trauma Concussion",  "Internal Bleeding Suspect", "Unstable Angina",
+        "Anaphylactic Shock",          "Chronic Migraine",          "Viral Pyrexia",
+        "Lumbar Disc Herniation",      "Gastric Ulcerative Bleed",  "Urinary Tract Infection",
+        "Uncontrolled Hypertension",
+        /* Discharged (5) */
+        "Recovered Angina",            "Resolved Cholelithiasis",   "Treated Gastroenteritis",
+        "Post-Appendectomy Recovery",  "Stabilized COPD Flare"
+    };
+
+    int ages[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        45, 58, 62, 29, 38, 67, 52, 48, 61, 70, 5, 8, 11, 3, 13,
+        /* Waiting (10) */
+        34, 27, 56, 42, 31, 40, 36, 50, 26, 47,
+        /* Discharged (5) */
+        54, 49, 22, 39, 65
+    };
+
+    char genders[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        'M', 'F', 'M', 'F', 'M', 'M', 'F', 'M', 'F', 'M', 'M', 'F', 'M', 'F', 'M',
+        /* Waiting (10) */
+        'M', 'M', 'M', 'F', 'F', 'M', 'F', 'M', 'F', 'O',
+        /* Discharged (5) */
+        'M', 'F', 'M', 'F', 'M'
+    };
+
+    int prios[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15): 8 Emergency (1), 7 Normal (2) */
+        1, 2, 1, 2, 2, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2,
+        /* Waiting (10): 4 Emergency (1), 6 Normal (2) */
+        1, 1, 1, 1, 2, 2, 2, 2, 2, 2,
+        /* Discharged (5): 2 Emergency (1), 3 Normal (2) */
+        1, 2, 2, 1, 2
+    };
+
+    int docIds[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        3, 2, 3, 2, 4, 3, 1, 1, 1, 3, 5, 5, 5, 5, 4,
+        /* Waiting (10): 5 assigned, 5 unassigned (-1) */
+        1, -1, -1, -1, 2, 2, 4, 2, -1, -1,
+        /* Discharged (5) */
+        3, 2, 2, 1, 2
+    };
+
+    int wards[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15): Ward 0 (General: 0..4), Ward 1 (ICU: 0..4), Ward 2 (Pediatric: 0..4) */
+        0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2,
+        /* Waiting (10) */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        /* Discharged (5) */
+        -1, -1, -1, -1, -1
+    };
+
+    int bedNos[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15): 5 beds per ward (indices 0..4) */
+        0, 1, 2, 3, 4,
+        0, 1, 2, 3, 4,
+        0, 1, 2, 3, 4,
+        /* Waiting (10) */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        /* Discharged (5) */
+        -1, -1, -1, -1, -1
+    };
+
+    int days[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        4, 5, 3, 2, 6, 7, 5, 4, 6, 8, 3, 4, 2, 3, 2,
+        /* Waiting (10) */
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        /* Discharged (5) */
+        3, 4, 2, 5, 3
+    };
+
+    int statuses[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        /* Waiting (10) */
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        /* Discharged (5) */
+        2, 2, 2, 2, 2
+    };
+
+    float consults[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        500.0f, 500.0f, 600.0f, 400.0f, 500.0f,
+        800.0f, 700.0f, 750.0f, 800.0f, 800.0f,
+        500.0f, 500.0f, 450.0f, 450.0f, 500.0f,
+        /* Waiting (10) */
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        /* Discharged (5) */
+        500.0f, 600.0f, 400.0f, 500.0f, 500.0f
+    };
+
+    float meds[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        1400.0f, 900.0f, 1100.0f, 600.0f, 1800.0f,
+        3200.0f, 2800.0f, 2600.0f, 3500.0f, 4000.0f,
+        950.0f, 1100.0f, 650.0f, 700.0f, 800.0f,
+        /* Waiting (10) */
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        /* Discharged (5) */
+        800.0f, 1200.0f, 500.0f, 1500.0f, 900.0f
+    };
+
+    float roomRates[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        800.0f, 800.0f, 800.0f, 800.0f, 800.0f,
+        2500.0f, 2500.0f, 2500.0f, 2500.0f, 2500.0f,
+        1200.0f, 1200.0f, 1200.0f, 1200.0f, 1200.0f,
+        /* Waiting (10) */
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        /* Discharged (5) */
+        1000.0f, 1200.0f, 800.0f, 1500.0f, 900.0f
+    };
+
+    float testCosts[DEMO_PATIENT_COUNT] = {
+        /* Admitted (15) */
+        1200.0f, 600.0f, 900.0f, 400.0f, 1500.0f,
+        2400.0f, 1800.0f, 2100.0f, 3000.0f, 2200.0f,
+        700.0f, 900.0f, 500.0f, 400.0f, 850.0f,
+        /* Waiting (10) */
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        /* Discharged (5) */
+        600.0f, 1500.0f, 300.0f, 2000.0f, 800.0f
+    };
 
     FILE *f = fopen(PATIENTS_FILE, "wb");
-    if (f == NULL) { printError("Cannot create demo data."); return; }
+    if (f == NULL) { printError("Cannot create demo data file."); return; }
 
     int i;
-    for (i = 0; i < 5; i++) {
-        demos[i].id = i + 1;
-        strcpy(demos[i].name,    names[i]);
-        strcpy(demos[i].disease, diseases[i]);
-        demos[i].age                  = ages[i];
-        demos[i].gender               = genders[i];
-        demos[i].priority             = prios[i];
-        demos[i].doctorId             = (i % MAX_DOCTORS) + 1;
-        demos[i].wardNo               = i % WARDS;
-        demos[i].bedNo                = i;
-        demos[i].daysAdmitted         = i + 1;
-        demos[i].status               = 1;
-        demos[i].charges.consultation = 500.0f;
-        demos[i].charges.medicine     = (float)(200 * (i + 1));
-        demos[i].charges.roomPerDay   = 800.0f;
-        demos[i].charges.tests        = (float)(100 * (i + 1));
-        beds[demos[i].wardNo][demos[i].bedNo] = 1;
-        fwrite(&demos[i], sizeof(struct Patient), 1, f);
-        doctors[demos[i].doctorId - 1].patientCount++;
+    for (i = 0; i < DEMO_PATIENT_COUNT; i++) {
+        struct Patient p;
+        p.id = i + 1;
+        strcpy(p.name,    names[i]);
+        strcpy(p.disease, diseases[i]);
+        p.age                  = ages[i];
+        p.gender               = genders[i];
+        p.priority             = prios[i];
+        p.doctorId             = docIds[i];
+        p.wardNo               = wards[i];
+        p.bedNo                = bedNos[i];
+        p.daysAdmitted         = days[i];
+        p.status               = statuses[i];
+        p.charges.consultation = consults[i];
+        p.charges.medicine     = meds[i];
+        p.charges.roomPerDay   = roomRates[i];
+        p.charges.tests        = testCosts[i];
+
+        if (p.status == 1 && p.wardNo >= 0 && p.bedNo >= 0) {
+            beds[p.wardNo][p.bedNo] = 1;
+        }
+
+        if (p.status != 2 && p.doctorId >= 1 && p.doctorId <= MAX_DOCTORS) {
+            doctors[p.doctorId - 1].patientCount++;
+        }
+
+        fwrite(&p, sizeof(struct Patient), 1, f);
     }
     fclose(f);
     saveBeds();
-    printSuccess("5 demo patients loaded successfully.");
+    printSuccess("30 demo patients loaded successfully.");
 }
 
 /* =============================================================
@@ -1223,6 +1450,7 @@ int main(void)
 {
     initDoctors();
     loadBeds();
+    recalculateDoctorLoads();
 
     int choice;
     struct Patient tempP;  /* reusable temp patient for pointer passing */

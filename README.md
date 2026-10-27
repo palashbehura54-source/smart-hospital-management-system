@@ -50,7 +50,7 @@ The system follows a modular architectural pipeline connecting emergency patient
 | **9. Record Updating** | In-place modification of clinical diagnoses and admission status. | Binary random access file updates using `fseek(SEEK_SET)` |
 | **10. Registry Table** | Formatted tabular display of all active, admitted, and discharged patient records. | Record traversal with `fread`, formatted `printf` width specifiers |
 | **11. Analytics Dashboard** | Real-time census: admitted counts, bed availability ratio, and total hospital revenue. | **Recursive counting** (`countEmergency`), arithmetic aggregation |
-| **99. Demo Data Ingestion** | Instant provisioning of 5 realistic emergency and routine clinical cases for demonstration. | Batch binary serialization (hidden utility) |
+| **99. Demo Data Ingestion** | Seeds 30 realistic clinical cases (15 admitted, 10 waiting, 5 discharged) with safety confirmation prompt. | Batch binary serialization & safe state reset |
 
 ---
 
@@ -110,12 +110,18 @@ gcc -std=c99 -Wall -Wextra -Wpedantic main.c -o hospital
 ./hospital
 ```
 
-### Quick Demonstration
-1. When the main menu loads, type `99` and hit **Enter** to instantly load 5 demo patients.
-2. Select `2` to inspect the **Triage List** sorted with emergency patients prioritized first.
-3. Select `4` to view the **Bed Grid** showing allocated beds across wards.
-4. Select `7` and enter patient ID `1` to discharge the patient and view the **Recursive Discharge Receipt**.
-5. Select `11` to view the aggregated **Hospital Summary Dashboard**.
+### Quick Demonstration (30-Patient Seeded Dataset)
+1. **Load Demo Dataset:** When the main menu loads, type `99` and hit **Enter**.
+   - *Safety Prompt:* The system displays a warning that existing records will be reset. Confirm by entering `y`. (Entering `n` cancels safely with zero data alteration).
+   - *Dataset Loaded:* 30 patients seeded (15 Admitted, 10 Waiting, 5 Discharged).
+2. **Priority Triage:** Select `2` to view the **Triage List** sorted emergency-first.
+3. **Doctor Capacity Enforcement:** Select `3` to assign a doctor:
+   - Notice **Dr. Rohit Mehta (General Medicine)** is at full capacity (**5/5**). Attempting to assign waiting patient `17` to Doctor `2` will be rejected.
+   - Assigning patient `17` to **Dr. Priya Sharma (Emergency)** (**4/5**) will succeed.
+4. **2D Bed Matrix:** Select `4` to view the **Bed Grid** (15 occupied, 15 free — exactly 5 free in General, 5 in ICU, 5 in Pediatric).
+5. **Bed Allocation:** Select `5`, enter waiting patient `18`, choose Ward `1` (General). The first free bed (Ward 1, Bed 6) is allocated immediately.
+6. **Discharge & Recursive Billing:** Select `7`, enter admitted patient `1` to discharge. A boxed receipt is generated with the total calculated recursively, the bed is freed, and a summary is saved to `discharge_1.txt`.
+7. **Hospital Analytics:** Select `11` to inspect the **Hospital Summary Dashboard** reflecting real-time active admissions, emergency ratios, available beds, and discharged revenue.
 
 ---
 
