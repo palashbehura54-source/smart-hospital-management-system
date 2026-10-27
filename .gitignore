@@ -1,0 +1,31 @@
+# Compiled binaries & objects
+hospital
+hospital.exe
+*.o
+*.out
+*.exe
+*.dSYM/
+
+# Runtime data files & generated receipts
+*.dat
+discharge_*.txt
+
+# macOS & system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor & IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
