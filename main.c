@@ -1,9 +1,7 @@
 /*
- * ============================================================
- *  Smart Hospital Management System with Emergency Triage
- *  Course : Computer Programming (26CAH-101)
- *  College: Chandigarh University, Mohali, Punjab
- * ============================================================
+ * Smart Hospital Management System with Emergency Triage
+ * Course : Computer Programming (26CAH-101)
+ * College: Chandigarh University, Mohali, Punjab
  */
 
 #include <stdio.h>
@@ -11,7 +9,7 @@
 #include <string.h>
 #include <ctype.h>
 
-/* ── ANSI Color / Style Codes ───────────────────────────────── */
+/* ANSI escape codes for terminal colors and formatting */
 #define RESET   "\033[0m"
 #define BOLD    "\033[1m"
 #define RED     "\033[1;31m"
@@ -22,14 +20,13 @@
 #define CYAN    "\033[1;36m"
 #define WHITE   "\033[1;37m"
 
-/* Clear screen without system() */
+/* Clear the console screen without using system("cls") */
 #define CLEAR() printf("\033[2J\033[H")
 
-/* ── Box geometry ───────────────────────────────────────────── */
-/* BOX_W: visible character count between the two ║ border chars */
+/* Inner visible character width between the box border lines */
 #define BOX_W 56
 
-/* ── Constants ──────────────────────────────────────────────── */
+/* Program constants */
 #define DEMO_PATIENT_COUNT 30
 #define MAX_DOCTORS        5
 #define MAX_PER_DOC        5
@@ -38,9 +35,7 @@
 #define PATIENTS_FILE      "patients.dat"
 #define BEDS_FILE          "beds.dat"
 
-/* ── Structures ─────────────────────────────────────────────── */
-
-/* Holds all treatment charges for one patient */
+/* Breakdown of billing charges for an admitted patient */
 struct Charges {
     float consultation;
     float medicine;
@@ -48,23 +43,23 @@ struct Charges {
     float tests;
 };
 
-/* Core patient record stored in binary file */
+/* Primary patient record saved in binary storage */
 struct Patient {
     int   id;
     char  name[60];
     int   age;
-    char  gender;       /* 'M' / 'F' / 'O' */
+    char  gender;       /* 'M', 'F', or 'O' */
     char  disease[80];
     int   priority;     /* 1 = Emergency, 2 = Normal */
-    int   doctorId;     /* -1 if not assigned */
-    int   wardNo;       /* 0-2, -1 if no bed */
-    int   bedNo;        /* 0-9, -1 if no bed */
+    int   doctorId;     /* Doctor ID (1-5), or -1 if unassigned */
+    int   wardNo;       /* Ward: 0=General, 1=ICU, 2=Pediatric, or -1 if unassigned */
+    int   bedNo;        /* Bed slot index (0-9), or -1 if unassigned */
     int   daysAdmitted;
-    int   status;       /* 0 = waiting, 1 = admitted, 2 = discharged */
+    int   status;       /* 0 = Waiting, 1 = Admitted, 2 = Discharged */
     struct Charges charges;
 };
 
-/* Doctor record – preloaded at startup */
+/* Doctor details and active assigned patient workload */
 struct Doctor {
     int  id;
     char name[60];
@@ -72,13 +67,11 @@ struct Doctor {
     int  patientCount;
 };
 
-/* ── Globals ─────────────────────────────────────────────────── */
+/* Global variables */
 struct Doctor doctors[MAX_DOCTORS];
 int beds[WARDS][BEDS_PER_WARD];
 
-/* ── Box-drawing helpers ─────────────────────────────────────── */
-
-/* Top border: ╔ followed by exactly BOX_W '═' chars then ╗ */
+/* Print the top border line of a console box */
 void boxTop(void)
 {
     int i;
@@ -87,7 +80,7 @@ void boxTop(void)
     printf("╗\n" RESET);
 }
 
-/* Middle divider: ╠ followed by exactly BOX_W '═' chars then ╣ */
+/* Print a horizontal divider inside a box */
 void boxMid(void)
 {
     int i;
@@ -96,7 +89,7 @@ void boxMid(void)
     printf("╣\n" RESET);
 }
 
-/* Bottom border: ╚ followed by exactly BOX_W '═' chars then ╝ */
+/* Print the bottom border line of a box */
 void boxBottom(void)
 {
     int i;
@@ -105,8 +98,7 @@ void boxBottom(void)
     printf("╝\n" RESET);
 }
 
-/* Content line: ║ + color + plain text + padding-to-BOX_W + ║
-   RULE: text must contain NO ANSI codes so strlen gives true width. */
+/* Print a left-aligned line of text padded to BOX_W characters */
 void boxLine(const char *color, const char *text)
 {
     int len = (int)strlen(text);
@@ -118,7 +110,7 @@ void boxLine(const char *color, const char *text)
     printf(CYAN "║\n" RESET);
 }
 
-/* Centered content line: plain text centered within BOX_W chars */
+/* Print a line of text centered within the box width */
 void boxLineCenter(const char *color, const char *text)
 {
     int len   = (int)strlen(text);
@@ -134,7 +126,7 @@ void boxLineCenter(const char *color, const char *text)
     printf(CYAN "║\n" RESET);
 }
 
-/* Blank line inside a box */
+/* Print a blank row inside the box borders */
 void boxEmpty(void)
 {
     int i;
@@ -143,14 +135,11 @@ void boxEmpty(void)
     printf(CYAN "║\n" RESET);
 }
 
-/* Menu option line.
-   numStr: "1".."11" or "0".  label: option text.
-   Padding computed from PLAIN text length, never from the colored string.
-   Numbers are right-aligned within a 2-char field so dots stay in column. */
+/* Print a menu option row with aligned numbers and padding */
 void boxMenuLine(const char *numStr, const char *label,
                  const char *numColor, const char *labelColor)
 {
-    /* right-align single-digit numbers with a leading space */
+    /* Right-align single-digit option numbers so the periods line up */
     const char *sp = ((int)strlen(numStr) < 2) ? " " : "";
     char plain[128];
     int len, pad, i;
@@ -158,14 +147,14 @@ void boxMenuLine(const char *numStr, const char *label,
     len = (int)strlen(plain);
     pad = BOX_W - len;
     if (pad < 0) pad = 0;
-    /* print the colored version — no width specifiers that touch ANSI strings */
+    /* Compute spacing from plain text length so ANSI color codes do not break alignment */
     printf("  " CYAN "║" RESET "  %s%s%s" RESET ".  %s%s" RESET,
            numColor, sp, numStr, labelColor, label);
     for (i = 0; i < pad; i++) printf(" ");
     printf(CYAN "║\n" RESET);
 }
 
-/* ── Forward declarations ────────────────────────────────────── */
+/* Function declarations */
 void  initDoctors(void);
 void  recalculateDoctorLoads(void);
 void  loadBeds(void);
@@ -195,35 +184,23 @@ void  loadDemoPatients(void);
 float totalBill(float charges[], int n);
 int   countEmergency(struct Patient *arr, int n);
 
-/* =============================================================
- *  RECURSIVE FUNCTION 1 – totalBill
- *  BASE CASE    : n == 0 → return 0
- *  RECURSIVE CASE: return charges[n-1] + totalBill(charges, n-1)
- * ============================================================= */
-/* RECURSION USED HERE */
+/* Sum treatment charges recursively by adding one element at a time */
 float totalBill(float charges[], int n)
 {
-    if (n == 0) return 0.0f;                             /* BASE CASE */
-    return charges[n - 1] + totalBill(charges, n - 1);  /* RECURSIVE CASE */
+    if (n == 0) return 0.0f;                             /* Base case: no charges left */
+    return charges[n - 1] + totalBill(charges, n - 1);  /* Add current charge and recurse on remainder */
 }
 
-/* =============================================================
- *  RECURSIVE FUNCTION 2 – countEmergency
- *  BASE CASE    : n == 0 → return 0
- *  RECURSIVE CASE: check last element, add countEmergency(arr,n-1)
- * ============================================================= */
-/* RECURSION USED HERE */
+/* Count emergency patients (priority 1) in an array using recursion */
 int countEmergency(struct Patient *arr, int n)
 {
-    if (n == 0) return 0;  /* BASE CASE */
-    /* POINTER USED HERE – pointer arithmetic to reach (n-1)th element */
+    if (n == 0) return 0;  /* Base case: reached end of list */
+    /* Check this patient, then recursively count through the rest of the array */
     int isEmergency = ((arr + n - 1)->priority == 1) ? 1 : 0;
-    return isEmergency + countEmergency(arr, n - 1);  /* RECURSIVE CASE */
+    return isEmergency + countEmergency(arr, n - 1);
 }
 
-/* =============================================================
- *  pauseEnter – wait for Enter key, then caller will redraw menu
- * ============================================================= */
+/* Wait for Enter key before returning to the menu */
 void pauseEnter(void)
 {
     int c;
@@ -234,9 +211,7 @@ void pauseEnter(void)
     }
 }
 
-/* =============================================================
- *  printSectionHeader – consistent-width section banner
- * ============================================================= */
+/* Section title header displayed in a cyan box */
 void printSectionHeader(const char *title)
 {
     printf("\n");
@@ -246,26 +221,25 @@ void printSectionHeader(const char *title)
     printf("\n");
 }
 
-/* Feedback messages: all plain ASCII tags to avoid glyph-width issues */
+/* Green success notification */
 void printSuccess(const char *msg)
 {
     printf("  " GREEN BOLD "[OK] %s" RESET "\n", msg);
 }
 
+/* Red error notification */
 void printError(const char *msg)
 {
     printf("  " RED BOLD " [X] %s" RESET "\n", msg);
 }
 
-/* ⚠ replaced with plain ASCII [ ! ] – double-width glyph breaks alignment */
+/* Yellow warning notification using plain ASCII */
 void printWarning(const char *msg)
 {
     printf("  " YELLOW BOLD "[ ! ] %s" RESET "\n", msg);
 }
 
-/* =============================================================
- *  showMenu – main menu rendered with consistent-width box helpers
- * ============================================================= */
+/* Display the main navigation menu */
 void showMenu(void)
 {
     CLEAR();
@@ -292,9 +266,7 @@ void showMenu(void)
     printf("  " BOLD WHITE "Your choice: " RESET);
 }
 
-/* =============================================================
- *  initDoctors – Preload 5 doctors at program start
- * ============================================================= */
+/* Preload the 5 default hospital doctors with empty patient counts */
 void initDoctors(void)
 {
     doctors[0].id = 1;
@@ -323,9 +295,7 @@ void initDoctors(void)
     doctors[4].patientCount = 0;
 }
 
-/* =============================================================
- *  recalculateDoctorLoads – Tally active patients per doctor
- * ============================================================= */
+/* Read patients.dat to recount how many active patients are assigned to each doctor */
 void recalculateDoctorLoads(void)
 {
     int i;
@@ -344,9 +314,7 @@ void recalculateDoctorLoads(void)
     fclose(f);
 }
 
-/* =============================================================
- *  loadBeds – Load bed occupancy grid from beds.dat
- * ============================================================= */
+/* Load the 3x10 bed matrix from beds.dat, or set all beds to free if no file exists */
 void loadBeds(void)
 {
     FILE *f = fopen(BEDS_FILE, "rb");
@@ -361,9 +329,7 @@ void loadBeds(void)
     fclose(f);
 }
 
-/* =============================================================
- *  saveBeds – Save bed occupancy grid to beds.dat
- * ============================================================= */
+/* Write the current 3x10 bed matrix to beds.dat */
 void saveBeds(void)
 {
     FILE *f = fopen(BEDS_FILE, "wb");
@@ -372,9 +338,7 @@ void saveBeds(void)
     fclose(f);
 }
 
-/* =============================================================
- *  nextPatientId – Count existing records, return next ID
- * ============================================================= */
+/* Calculate the next sequential patient ID from the file size */
 int nextPatientId(void)
 {
     FILE *f = fopen(PATIENTS_FILE, "rb");
@@ -385,18 +349,14 @@ int nextPatientId(void)
     return (int)(size / sizeof(struct Patient)) + 1;
 }
 
-/* =============================================================
- *  clearInputBuffer – Discard leftover characters after scanf
- * ============================================================= */
+/* Discard any leftover characters from the standard input buffer */
 void clearInputBuffer(void)
 {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
-/* =============================================================
- *  stripNewline – Remove trailing '\n' left by fgets
- * ============================================================= */
+/* Remove the trailing newline character left behind by fgets */
 void stripNewline(char *s)
 {
     int len = (int)strlen(s);
@@ -404,10 +364,7 @@ void stripNewline(char *s)
         s[len - 1] = '\0';
 }
 
-/* =============================================================
- *  truncateText – Copy src to dest up to maxLen, append "..."
- *                 if src exceeds maxLen. dest must have room.
- * ============================================================= */
+/* Truncate text to maxLen and append ellipses (...) if it exceeds the column width */
 void truncateText(char *dest, const char *src, int maxLen)
 {
     if (dest == NULL || src == NULL || maxLen <= 0) return;
@@ -427,11 +384,8 @@ void truncateText(char *dest, const char *src, int maxLen)
     }
 }
 
-/* =============================================================
- *  registerPatient – Fill patient struct and save to patients.dat
- *  POINTER USED HERE – p is passed as struct Patient *
- * ============================================================= */
-void registerPatient(struct Patient *p) /* POINTER USED HERE */
+/* Prompt for patient details, assign next ID, and append record to patients.dat */
+void registerPatient(struct Patient *p)
 {
     p->id = nextPatientId();
 
@@ -439,7 +393,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
     fgets(p->name, sizeof(p->name), stdin);
     stripNewline(p->name);
 
-    /* Validate age */
+    /* Validate age within standard human range */
     do {
         printf("  " CYAN "Age (0-120) : " RESET);
         scanf("%d", &p->age);
@@ -448,7 +402,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
             printError("Invalid age. Try again.");
     } while (p->age < 0 || p->age > 120);
 
-    /* Validate gender */
+    /* Accept M, F, or O for gender */
     do {
         printf("  " CYAN "Gender (M/F/O): " RESET);
         scanf(" %c", &p->gender);
@@ -462,7 +416,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
     fgets(p->disease, sizeof(p->disease), stdin);
     stripNewline(p->disease);
 
-    /* Validate priority */
+    /* Priority: 1 for emergency triage, 2 for regular consultation */
     do {
         printf("  " CYAN "Priority (1=Emergency, 2=Normal): " RESET);
         scanf("%d", &p->priority);
@@ -471,7 +425,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
             printError("Enter 1 or 2.");
     } while (p->priority != 1 && p->priority != 2);
 
-    /* Defaults */
+    /* Set default status to waiting and initialize charges to zero */
     p->doctorId             = -1;
     p->wardNo               = -1;
     p->bedNo                = -1;
@@ -482,7 +436,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
     p->charges.roomPerDay   = 0.0f;
     p->charges.tests        = 0.0f;
 
-    /* Append to binary file */
+    /* Append the new patient record to the end of the binary file */
     FILE *f = fopen(PATIENTS_FILE, "ab");
     if (f == NULL) { printError("Cannot open patients file."); return; }
     fwrite(p, sizeof(struct Patient), 1, f);
@@ -496,11 +450,7 @@ void registerPatient(struct Patient *p) /* POINTER USED HERE */
     }
 }
 
-/* =============================================================
- *  triageList – Load all patients, bubble-sort by priority,
- *               display as aligned colored table.
- *  POINTER USED HERE – pointer arithmetic on dynamic array.
- * ============================================================= */
+/* Load active patients into memory, sort emergency cases first, and display the table */
 void triageList(void)
 {
     FILE *f = fopen(PATIENTS_FILE, "rb");
@@ -512,18 +462,18 @@ void triageList(void)
     int total = (int)(size / sizeof(struct Patient));
     if (total == 0) { fclose(f); printWarning("No patients registered."); return; }
 
-    /* POINTER USED HERE – dynamic array via malloc */
+    /* Allocate dynamic memory based on the total number of stored records */
     struct Patient *arr = (struct Patient *)malloc(total * sizeof(struct Patient));
     if (arr == NULL) { fclose(f); printError("malloc failed."); return; }
     fread(arr, sizeof(struct Patient), total, f);
     fclose(f);
 
-    /* Bubble sort: priority 1 (Emergency) before 2 (Normal) */
+    /* Bubble sort: place emergency patients (priority 1) before normal patients (priority 2) */
     int i, j;
     struct Patient tmp;
     for (i = 0; i < total - 1; i++) {
         for (j = 0; j < total - i - 1; j++) {
-            /* POINTER USED HERE – pointer arithmetic */
+            /* Swap if a normal patient precedes an emergency patient */
             if ((arr + j)->priority > (arr + j + 1)->priority) {
                 tmp            = *(arr + j);
                 *(arr + j)     = *(arr + j + 1);
@@ -532,8 +482,7 @@ void triageList(void)
         }
     }
 
-    /* Column widths (visible): ID=4, Name=20, Age=3, Disease=26,
-       Priority=11, Status=10.  Each cell has one space of padding on each side. */
+    /* Fixed table widths: ID=4, Name=20, Age=3, Disease=26, Priority=11, Status=10 */
     printf(CYAN
        "  ┌──────┬──────────────────────┬─────┬────────────────────────────┬─────────────┬────────────┐\n"
        RESET);
@@ -551,7 +500,7 @@ void triageList(void)
 
     int printed = 0;
     for (i = 0; i < total; i++) {
-        /* POINTER USED HERE – pointer arithmetic to walk array */
+        /* Move to the next patient in the array */
         struct Patient *cur = (arr + i);
         if (cur->status == 2) continue;
 
@@ -564,7 +513,7 @@ void triageList(void)
         const char *statStr  = (cur->status  == 0)  ? "Waiting"
                              : (cur->status  == 1)  ? "Admitted"
                                                     : "Discharged";
-        /* Color codes are placed OUTSIDE %-Ns specifiers so widths are unaffected */
+        /* Print ANSI colors outside width specifiers so column alignment is not affected */
         printf(CYAN "  │" RESET " %s%-4d" RESET " "
                CYAN "│" RESET " %s%-20s" RESET " "
                CYAN "│" RESET " %s%-3d" RESET " "
@@ -589,12 +538,10 @@ void triageList(void)
        "  └──────┴──────────────────────┴─────┴────────────────────────────┴─────────────┴────────────┘\n"
        RESET);
 
-    free(arr);  /* always free dynamic memory */
+    free(arr);  /* Release allocated memory */
 }
 
-/* =============================================================
- *  assignDoctor – Link a patient to a doctor (max 5 per doctor)
- * ============================================================= */
+/* Assign an attending doctor to a patient while respecting the 5-patient workload limit */
 void assignDoctor(void)
 {
     int pid, did, i;
@@ -629,6 +576,7 @@ void assignDoctor(void)
         printError("Doctor is full (max 5 patients)."); return;
     }
 
+    /* Open in read-plus-binary mode to update the record in-place */
     FILE *f = fopen(PATIENTS_FILE, "r+b");
     if (f == NULL) { printError("No patient file found."); return; }
 
@@ -638,7 +586,7 @@ void assignDoctor(void)
     while (fread(&p, sizeof(struct Patient), 1, f) == 1) {
         if (p.id == pid && p.status != 2) {
             p.doctorId = did;
-            fseek(f, pos, SEEK_SET);  /* POINTER USED HERE – in-place update */
+            fseek(f, pos, SEEK_SET);  /* Seek back to the record position and overwrite it */
             fwrite(&p, sizeof(struct Patient), 1, f);
             found = 1;
             doctors[did - 1].patientCount++;
@@ -652,11 +600,8 @@ void assignDoctor(void)
     else        printSuccess("Doctor assigned successfully.");
 }
 
-/* =============================================================
- *  showBeds – Print the ward-bed grid with color coding
- *  POINTER USED HERE – grid passed as pointer to array of 10 ints
- * ============================================================= */
-void showBeds(int (*grid)[BEDS_PER_WARD]) /* POINTER USED HERE */
+/* Display the 2D bed occupancy grid across General, ICU, and Pediatric wards */
+void showBeds(int (*grid)[BEDS_PER_WARD])
 {
     const char *wardNames[3] = {
         "Ward A  General   ",
@@ -669,7 +614,7 @@ void showBeds(int (*grid)[BEDS_PER_WARD]) /* POINTER USED HERE */
     for (w = 0; w < WARDS; w++) {
         printf("  " CYAN BOLD "%-20s" RESET "  ", wardNames[w]);
         for (b = 0; b < BEDS_PER_WARD; b++) {
-            /* POINTER USED HERE – pointer arithmetic on 2D via pointer-to-array */
+            /* Access the bed slot using pointer-to-array dereferencing */
             if (*(*(grid + w) + b) == 1) {
                 printf(RED "[O]" RESET " ");
                 totalOcc++;
@@ -689,11 +634,8 @@ void showBeds(int (*grid)[BEDS_PER_WARD]) /* POINTER USED HERE */
            totalOcc, totalFree, WARDS * BEDS_PER_WARD);
 }
 
-/* =============================================================
- *  allocateBed – Assign first free bed in chosen ward to patient
- *  POINTER USED HERE – p is struct Patient *
- * ============================================================= */
-void allocateBed(struct Patient *p) /* POINTER USED HERE */
+/* Find the first available bed in the chosen ward and admit the patient */
+void allocateBed(struct Patient *p)
 {
     FILE *f = fopen(PATIENTS_FILE, "r+b");
     if (f == NULL) { printError("Cannot open patient file."); return; }
@@ -736,6 +678,7 @@ void allocateBed(struct Patient *p) /* POINTER USED HERE */
     }
     int w = wChoice - 1;
 
+    /* Scan for the first free bed (0) in the chosen ward */
     int b, foundBed = -1;
     for (b = 0; b < BEDS_PER_WARD; b++) {
         if (beds[w][b] == 0) { foundBed = b; break; }
@@ -746,8 +689,11 @@ void allocateBed(struct Patient *p) /* POINTER USED HERE */
         return;
     }
 
+    /* Mark bed as occupied and persist bed matrix */
     beds[w][foundBed] = 1;
     saveBeds();
+
+    /* Update patient record with ward, bed, and admitted status */
 
     rec.wardNo = w;
     rec.bedNo  = foundBed;
@@ -767,9 +713,7 @@ void allocateBed(struct Patient *p) /* POINTER USED HERE */
     }
 }
 
-/* =============================================================
- *  addCharges – Add / update treatment charges for a patient
- * ============================================================= */
+/* Record or update itemized treatment charges and duration of stay */
 void addCharges(void)
 {
     int pid;
@@ -810,6 +754,7 @@ void addCharges(void)
             p.charges.roomPerDay   = r;
             p.charges.tests        = t;
 
+            /* Seek back to overwrite this record with the new charge data */
             fseek(f, pos, SEEK_SET);
             fwrite(&p, sizeof(struct Patient), 1, f);
             found = 1;
@@ -822,12 +767,8 @@ void addCharges(void)
     else        printSuccess("Charges updated successfully.");
 }
 
-/* =============================================================
- *  dischargePatient – Free bed, compute bill (recursive),
- *                     print receipt box, write .txt summary.
- *  POINTER USED HERE – p is struct Patient *
- * ============================================================= */
-void dischargePatient(struct Patient *p) /* POINTER USED HERE */
+/* Release patient's bed, calculate total bill recursively, show receipt, and export file */
+void dischargePatient(struct Patient *p)
 {
     int pid;
     printf("  " CYAN "Patient ID to discharge: " RESET);
@@ -841,7 +782,7 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
     int found = 0;
     while (fread(&rec, sizeof(struct Patient), 1, f) == 1) {
         if (rec.id == pid && rec.status == 1) {
-            /* Free the bed */
+            /* Free the bed in the grid and save */
             if (rec.wardNo >= 0 && rec.bedNo >= 0) {
                 beds[rec.wardNo][rec.bedNo] = 0;
                 saveBeds();
@@ -849,28 +790,27 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
                 rec.bedNo  = -1;
             }
 
-            /* Build charges array for recursive totalBill */
+            /* Prepare array of 4 charges for the recursive bill calculation */
             float ch[4];
             ch[0] = rec.charges.consultation;
             ch[1] = rec.charges.medicine;
             ch[2] = rec.charges.roomPerDay * (float)rec.daysAdmitted;
             ch[3] = rec.charges.tests;
 
-            /* RECURSION USED HERE – totalBill sums the array recursively */
+            /* Calculate total bill using recursion */
             float bill = totalBill(ch, 4);
 
-            rec.status = 2;  /* discharged */
+            rec.status = 2;  /* Set status to discharged */
             fseek(f, pos, SEEK_SET);
             fwrite(&rec, sizeof(struct Patient), 1, f);
             *p = rec;
             found = 1;
 
+            /* Reduce doctor's assigned patient count */
             if (rec.doctorId >= 1 && rec.doctorId <= MAX_DOCTORS)
                 doctors[rec.doctorId - 1].patientCount--;
 
-            /* ── Discharge receipt box ─────────────────────────
-               All padding computed from PLAIN text length via sprintf.
-               ─────────────────────────────────────────────────── */
+            /* Render discharge receipt inside the aligned box */
             char tmp[160];
             int  pad, i;
 
@@ -879,28 +819,24 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
             boxLineCenter(BOLD WHITE, "DISCHARGE RECEIPT");
             boxMid();
 
-            /* Patient ID */
             sprintf(tmp, "  Patient ID   : %d", rec.id);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Patient ID   : " YELLOW "%d" RESET, rec.id);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Name */
             sprintf(tmp, "  Name         : %s", rec.name);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Name         : " YELLOW "%s" RESET, rec.name);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Disease */
             sprintf(tmp, "  Disease      : %s", rec.disease);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Disease      : " YELLOW "%s" RESET, rec.disease);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Days admitted */
             sprintf(tmp, "  Days Admitted: %d", rec.daysAdmitted);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Days Admitted: " YELLOW "%d" RESET, rec.daysAdmitted);
@@ -909,28 +845,24 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
 
             boxMid();
 
-            /* Consultation */
             sprintf(tmp, "  Consultation : Rs. %.2f", ch[0]);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Consultation : Rs. " WHITE "%.2f" RESET, ch[0]);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Medicine */
             sprintf(tmp, "  Medicine     : Rs. %.2f", ch[1]);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Medicine     : Rs. " WHITE "%.2f" RESET, ch[1]);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Room charges */
             sprintf(tmp, "  Room charges : Rs. %.2f", ch[2]);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Room charges : Rs. " WHITE "%.2f" RESET, ch[2]);
             for (i = 0; i < pad; i++) printf(" ");
             printf(CYAN "║\n" RESET);
 
-            /* Tests */
             sprintf(tmp, "  Tests        : Rs. %.2f", ch[3]);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET WHITE "  Tests        : Rs. " WHITE "%.2f" RESET, ch[3]);
@@ -939,7 +871,6 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
 
             boxMid();
 
-            /* TOTAL BILL – bold green */
             sprintf(tmp, "  TOTAL BILL   : Rs. %.2f", bill);
             pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
             printf("  " CYAN "║" RESET GREEN BOLD "  TOTAL BILL   : Rs. %.2f" RESET, bill);
@@ -948,7 +879,7 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
 
             boxBottom();
 
-            /* Write plain-text discharge summary file */
+            /* Export itemized discharge summary to text file */
             {
                 char fname[40];
                 sprintf(fname, "discharge_%d.txt", pid);
@@ -987,10 +918,7 @@ void dischargePatient(struct Patient *p) /* POINTER USED HERE */
     if (!found) printError("Patient not found or not admitted.");
 }
 
-/* =============================================================
- *  searchPatient – Find by ID or by name substring (strstr/strcmp)
- *  POINTER USED HERE – pointer arithmetic on dynamic array
- * ============================================================= */
+/* Search for patients by ID or by name substring */
 void searchPatient(void)
 {
     int choice;
@@ -1007,7 +935,7 @@ void searchPatient(void)
     int total = (int)(size / sizeof(struct Patient));
     if (total == 0) { fclose(f); printWarning("No patients on record."); return; }
 
-    /* POINTER USED HERE – dynamic allocation */
+    /* Load records into temporary memory buffer */
     struct Patient *arr = (struct Patient *)malloc(total * sizeof(struct Patient));
     if (arr == NULL) { fclose(f); printError("malloc failed."); return; }
     fread(arr, sizeof(struct Patient), total, f);
@@ -1021,7 +949,7 @@ void searchPatient(void)
         scanf("%d", &sid); clearInputBuffer();
 
         for (i = 0; i < total; i++) {
-            /* POINTER USED HERE – pointer arithmetic */
+            /* Walk through the array using pointer arithmetic */
             struct Patient *cur = (arr + i);
             if (cur->id == sid) {
                 if (!found) {
@@ -1050,9 +978,9 @@ void searchPatient(void)
         stripNewline(keyword);
 
         for (i = 0; i < total; i++) {
-            /* POINTER USED HERE */
+            /* Check if the patient name contains the search keyword */
             struct Patient *cur = (arr + i);
-            if (strstr(cur->name, keyword) != NULL) {  /* strstr substring match */
+            if (strstr(cur->name, keyword) != NULL) {
                 if (!found) {
                     printf(CYAN "\n  %-4s %-20s %-4s %-26s %-11s %-10s\n" RESET,
                            "ID", "Name", "Age", "Disease", "Priority", "Status");
@@ -1081,14 +1009,11 @@ void searchPatient(void)
     }
 
     if (!found) printWarning("No matching patient found.");
-    free(arr);
+    free(arr);  /* Free allocated search buffer */
 }
 
-/* =============================================================
- *  updatePatient – Edit name, disease, priority, days admitted
- *  POINTER USED HERE – p is struct Patient *
- * ============================================================= */
-void updatePatient(struct Patient *p) /* POINTER USED HERE */
+/* Modify diagnosis, age, priority, or duration of stay for an active patient */
+void updatePatient(struct Patient *p)
 {
     int pid;
     printf("  " CYAN "Patient ID to update: " RESET);
@@ -1128,6 +1053,7 @@ void updatePatient(struct Patient *p) /* POINTER USED HERE */
             scanf("%d", &newDays); clearInputBuffer();
             if (newDays >= 0) rec.daysAdmitted = newDays;
 
+            /* Seek to the record position and overwrite it in-place */
             fseek(f, pos, SEEK_SET);
             fwrite(&rec, sizeof(struct Patient), 1, f);
             *p = rec;
@@ -1141,9 +1067,7 @@ void updatePatient(struct Patient *p) /* POINTER USED HERE */
     else        printSuccess("Patient record updated successfully.");
 }
 
-/* =============================================================
- *  displayAll – Show all patients in a clean fixed-width table
- * ============================================================= */
+/* Read through patients.dat sequentially and display all records in a fixed-width table */
 void displayAll(void)
 {
     FILE *f = fopen(PATIENTS_FILE, "rb");
@@ -1185,10 +1109,7 @@ void displayAll(void)
     else printf("\n  " WHITE "Total records: " YELLOW "%d\n" RESET, count);
 }
 
-/* =============================================================
- *  hospitalSummary – Boxed dashboard; uses recursive helpers.
- *  POINTER USED HERE – dynamic array via calloc + pointer arithmetic
- * ============================================================= */
+/* Display an overview dashboard with beds, admissions, revenue, and emergency counts */
 void hospitalSummary(void)
 {
     FILE *f = fopen(PATIENTS_FILE, "rb");
@@ -1200,13 +1121,13 @@ void hospitalSummary(void)
     int total = (int)(size / sizeof(struct Patient));
     if (total == 0) { fclose(f); printWarning("No patients."); return; }
 
-    /* POINTER USED HERE – dynamic array */
+    /* Allocate dynamic memory to inspect patient records for summary stats */
     struct Patient *arr = (struct Patient *)calloc(total, sizeof(struct Patient));
     if (arr == NULL) { fclose(f); printError("calloc failed."); return; }
     fread(arr, sizeof(struct Patient), total, f);
     fclose(f);
 
-    /* RECURSION USED HERE – count emergency patients recursively */
+    /* Count emergency cases across the array using recursion */
     int emgCount = countEmergency(arr, total);
 
     int freeBeds = 0, admittedCount = 0, i, w, b;
@@ -1216,7 +1137,7 @@ void hospitalSummary(void)
             if (beds[w][b] == 0) freeBeds++;
 
     for (i = 0; i < total; i++) {
-        /* POINTER USED HERE – pointer arithmetic */
+        /* Move through the array using pointer arithmetic */
         struct Patient *cur = (arr + i);
         if (cur->status == 2) {
             float ch[4];
@@ -1224,14 +1145,12 @@ void hospitalSummary(void)
             ch[1] = cur->charges.medicine;
             ch[2] = cur->charges.roomPerDay * (float)cur->daysAdmitted;
             ch[3] = cur->charges.tests;
-            revenue += totalBill(ch, 4);  /* RECURSION USED HERE */
+            revenue += totalBill(ch, 4);  /* Sum discharged bill into total revenue */
         }
         if (cur->status == 1) admittedCount++;
     }
 
-    /* ── Dashboard box ─────────────────────────────────────────
-       Plain text built with sprintf for width; color applied after.
-       ─────────────────────────────────────────────────────────── */
+    /* Render dashboard box with computed padding */
     char tmp[128];
     int  pad, j;
 
@@ -1240,28 +1159,24 @@ void hospitalSummary(void)
     boxLineCenter(BOLD WHITE, "HOSPITAL DASHBOARD");
     boxMid();
 
-    /* Total Patients Registered */
     sprintf(tmp, "  Total Patients Registered : %d", total);
     pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
     printf("  " CYAN "║" RESET WHITE "  Total Patients Registered : " YELLOW "%d" RESET, total);
     for (j = 0; j < pad; j++) printf(" ");
     printf(CYAN "║\n" RESET);
 
-    /* Currently Admitted */
     sprintf(tmp, "  Currently Admitted        : %d", admittedCount);
     pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
     printf("  " CYAN "║" RESET WHITE "  Currently Admitted        : " GREEN "%d" RESET, admittedCount);
     for (j = 0; j < pad; j++) printf(" ");
     printf(CYAN "║\n" RESET);
 
-    /* Emergency Patients */
     sprintf(tmp, "  Emergency Patients        : %d", emgCount);
     pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
     printf("  " CYAN "║" RESET WHITE "  Emergency Patients        : " RED "%d" RESET, emgCount);
     for (j = 0; j < pad; j++) printf(" ");
     printf(CYAN "║\n" RESET);
 
-    /* Free Beds */
     sprintf(tmp, "  Free Beds (all wards)     : %d / %d",
             freeBeds, WARDS * BEDS_PER_WARD);
     pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
@@ -1271,7 +1186,6 @@ void hospitalSummary(void)
     for (j = 0; j < pad; j++) printf(" ");
     printf(CYAN "║\n" RESET);
 
-    /* Total Revenue */
     sprintf(tmp, "  Total Revenue (discharged): Rs. %.2f", revenue);
     pad = BOX_W - (int)strlen(tmp); if (pad < 0) pad = 0;
     printf("  " CYAN "║" RESET WHITE "  Total Revenue (discharged): "
@@ -1281,12 +1195,10 @@ void hospitalSummary(void)
 
     boxBottom();
 
-    free(arr);
+    free(arr);  /* Release allocated summary buffer */
 }
 
-/* =============================================================
- *  loadDemoPatients – Hidden option 99; loads 30 demo patients
- * ============================================================= */
+/* Populate 30 fictional demo records with balanced beds and doctor workloads (option 99) */
 void loadDemoPatients(void)
 {
     printWarning("This will reset all current patient records and bed allocations!");
@@ -1499,9 +1411,7 @@ void loadDemoPatients(void)
     printSuccess("30 demo patients loaded successfully.");
 }
 
-/* =============================================================
- *  main – Entry point; do-while loop with switch menu
- * ============================================================= */
+/* Program entry point: initializes data structures and runs the interactive menu loop */
 int main(void)
 {
     initDoctors();
@@ -1509,7 +1419,7 @@ int main(void)
     recalculateDoctorLoads();
 
     int choice;
-    struct Patient tempP;  /* reusable temp patient for pointer passing */
+    struct Patient tempP;  /* Reusable struct buffer for passing to functions by reference */
 
     do {
         showMenu();
@@ -1520,7 +1430,7 @@ int main(void)
             case 1:
                 CLEAR();
                 printSectionHeader("REGISTER PATIENT");
-                registerPatient(&tempP);   /* POINTER USED HERE */
+                registerPatient(&tempP);
                 pauseEnter();
                 break;
             case 2:
@@ -1538,7 +1448,7 @@ int main(void)
             case 4:
                 CLEAR();
                 printSectionHeader("BED GRID");
-                showBeds(beds);            /* POINTER USED HERE */
+                showBeds(beds);
                 pauseEnter();
                 break;
             case 5:
@@ -1546,7 +1456,7 @@ int main(void)
                 printSectionHeader("ALLOCATE BED TO PATIENT");
                 printf("  " CYAN "Patient ID: " RESET);
                 scanf("%d", &tempP.id); clearInputBuffer();
-                allocateBed(&tempP);       /* POINTER USED HERE */
+                allocateBed(&tempP);
                 pauseEnter();
                 break;
             case 6:
@@ -1558,7 +1468,7 @@ int main(void)
             case 7:
                 CLEAR();
                 printSectionHeader("DISCHARGE PATIENT");
-                dischargePatient(&tempP);  /* POINTER USED HERE */
+                dischargePatient(&tempP);
                 pauseEnter();
                 break;
             case 8:
@@ -1570,7 +1480,7 @@ int main(void)
             case 9:
                 CLEAR();
                 printSectionHeader("UPDATE PATIENT DETAILS");
-                updatePatient(&tempP);     /* POINTER USED HERE */
+                updatePatient(&tempP);
                 pauseEnter();
                 break;
             case 10:
@@ -1594,7 +1504,7 @@ int main(void)
                 printf("\n");
                 break;
             case 99:
-                /* Hidden demo loader – not listed in menu */
+                /* Hidden demo loader for testing and viva demonstration */
                 CLEAR();
                 printSectionHeader("DEMO DATA LOADER");
                 loadDemoPatients();
