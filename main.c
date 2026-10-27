@@ -173,6 +173,7 @@ void  saveBeds(void);
 int   nextPatientId(void);
 void  clearInputBuffer(void);
 void  stripNewline(char *s);
+void  truncateText(char *dest, const char *src, int maxLen);
 void  pauseEnter(void);
 void  printSectionHeader(const char *title);
 void  printSuccess(const char *msg);
@@ -404,6 +405,29 @@ void stripNewline(char *s)
 }
 
 /* =============================================================
+ *  truncateText – Copy src to dest up to maxLen, append "..."
+ *                 if src exceeds maxLen. dest must have room.
+ * ============================================================= */
+void truncateText(char *dest, const char *src, int maxLen)
+{
+    if (dest == NULL || src == NULL || maxLen <= 0) return;
+
+    int len = (int)strlen(src);
+    if (len <= maxLen) {
+        strcpy(dest, src);
+    } else {
+        if (maxLen > 3) {
+            strncpy(dest, src, maxLen - 3);
+            dest[maxLen - 3] = '\0';
+            strcat(dest, "...");
+        } else {
+            strncpy(dest, src, maxLen);
+            dest[maxLen] = '\0';
+        }
+    }
+}
+
+/* =============================================================
  *  registerPatient – Fill patient struct and save to patients.dat
  *  POINTER USED HERE – p is passed as struct Patient *
  * ============================================================= */
@@ -508,21 +532,21 @@ void triageList(void)
         }
     }
 
-    /* Column widths (visible): ID=4, Name=20, Age=3, Disease=16,
+    /* Column widths (visible): ID=4, Name=20, Age=3, Disease=26,
        Priority=11, Status=10.  Each cell has one space of padding on each side. */
     printf(CYAN
-       "  ┌──────┬──────────────────────┬─────┬──────────────────┬─────────────┬────────────┐\n"
+       "  ┌──────┬──────────────────────┬─────┬────────────────────────────┬─────────────┬────────────┐\n"
        RESET);
     printf(CYAN "  │" RESET BOLD WHITE " %-4s " RESET
            CYAN "│" RESET BOLD WHITE " %-20s " RESET
            CYAN "│" RESET BOLD WHITE " %-3s " RESET
-           CYAN "│" RESET BOLD WHITE " %-16s " RESET
+           CYAN "│" RESET BOLD WHITE " %-26s " RESET
            CYAN "│" RESET BOLD WHITE " %-11s " RESET
            CYAN "│" RESET BOLD WHITE " %-10s " RESET
            CYAN "│\n" RESET,
            "ID", "Name", "Age", "Disease", "Priority", "Status");
     printf(CYAN
-       "  ├──────┼──────────────────────┼─────┼──────────────────┼─────────────┼────────────┤\n"
+       "  ├──────┼──────────────────────┼─────┼────────────────────────────┼─────────────┼────────────┤\n"
        RESET);
 
     int printed = 0;
@@ -530,6 +554,10 @@ void triageList(void)
         /* POINTER USED HERE – pointer arithmetic to walk array */
         struct Patient *cur = (arr + i);
         if (cur->status == 2) continue;
+
+        char nBuf[32], dBuf[32];
+        truncateText(nBuf, cur->name, 20);
+        truncateText(dBuf, cur->disease, 26);
 
         const char *rowColor = (cur->priority == 1) ? RED : GREEN;
         const char *prioTag  = (cur->priority == 1) ? "[EMERGENCY]" : "[NORMAL]   ";
@@ -540,25 +568,25 @@ void triageList(void)
         printf(CYAN "  │" RESET " %s%-4d" RESET " "
                CYAN "│" RESET " %s%-20s" RESET " "
                CYAN "│" RESET " %s%-3d" RESET " "
-               CYAN "│" RESET " %s%-16s" RESET " "
+               CYAN "│" RESET " %s%-26s" RESET " "
                CYAN "│" RESET " %s%-11s" RESET " "
                CYAN "│" RESET " %s%-10s" RESET " "
                CYAN "│\n" RESET,
                rowColor, cur->id,
-               rowColor, cur->name,
+               rowColor, nBuf,
                rowColor, cur->age,
-               rowColor, cur->disease,
+               rowColor, dBuf,
                rowColor, prioTag,
                rowColor, statStr);
         printed++;
     }
 
     if (printed == 0)
-        printf(CYAN "  │" RESET "%-84s" CYAN "│\n" RESET,
+        printf(CYAN "  │" RESET "%-91s" CYAN "│\n" RESET,
                "  No active patients.");
 
     printf(CYAN
-       "  └──────┴──────────────────────┴─────┴──────────────────┴─────────────┴────────────┘\n"
+       "  └──────┴──────────────────────┴─────┴────────────────────────────┴─────────────┴────────────┘\n"
        RESET);
 
     free(arr);  /* always free dynamic memory */
@@ -576,17 +604,20 @@ void assignDoctor(void)
     printf("\n  " BOLD WHITE "Available Doctors:\n" RESET);
     printf(CYAN "  %-4s %-25s %-18s %s\n" RESET,
            "ID", "Name", "Department", "Load");
-    printf(CYAN "  %-60s\n" RESET,
-           "────────────────────────────────────────────────────────────");
+    printf(CYAN "  ──────────────────────────────────────────────────────\n" RESET);
     for (i = 0; i < MAX_DOCTORS; i++) {
         const char *lc = (doctors[i].patientCount >= MAX_PER_DOC) ? RED : GREEN;
+        char nBuf[32], dBuf[32];
+        truncateText(nBuf, doctors[i].name, 25);
+        truncateText(dBuf, doctors[i].department, 18);
         printf("  " YELLOW "%-4d" RESET
-               WHITE "%-25s " RESET
+               WHITE " %-25s " RESET
                MAGENTA "%-18s " RESET
                "%s%d/%d\n" RESET,
-               doctors[i].id, doctors[i].name, doctors[i].department,
+               doctors[i].id, nBuf, dBuf,
                lc, doctors[i].patientCount, MAX_PER_DOC);
     }
+    printf(CYAN "  ──────────────────────────────────────────────────────\n" RESET);
 
     printf("\n  " CYAN "Doctor ID : " RESET);
     scanf("%d", &did); clearInputBuffer();
@@ -983,27 +1014,32 @@ void searchPatient(void)
     fclose(f);
 
     int i, found = 0;
-    /* Table header */
-    printf(CYAN "\n  %-6s %-22s %-5s %-18s %-13s %-10s\n" RESET,
-           "ID", "Name", "Age", "Disease", "Priority", "Status");
-    printf(CYAN "  %-74s\n" RESET,
-           "──────────────────────────────────────────────────────────────────────────");
 
     if (choice == 1) {
         int sid;
         printf("  " CYAN "Enter Patient ID: " RESET);
         scanf("%d", &sid); clearInputBuffer();
+
         for (i = 0; i < total; i++) {
             /* POINTER USED HERE – pointer arithmetic */
             struct Patient *cur = (arr + i);
             if (cur->id == sid) {
+                if (!found) {
+                    printf(CYAN "\n  %-4s %-20s %-4s %-26s %-11s %-10s\n" RESET,
+                           "ID", "Name", "Age", "Disease", "Priority", "Status");
+                    printf(CYAN "  ───────────────────────────────────────────────────────────────────────────────\n" RESET);
+                }
+                char nBuf[32], dBuf[32];
+                truncateText(nBuf, cur->name, 20);
+                truncateText(dBuf, cur->disease, 26);
                 const char *col = (cur->priority == 1) ? RED : GREEN;
                 const char *stat = (cur->status == 0) ? "Waiting"
                                  : (cur->status == 1) ? "Admitted" : "Discharged";
-                printf("  %s%-6d" RESET " %-22s %-5d %-18s %s%-13s" RESET " %-10s\n",
-                       col, cur->id, cur->name, cur->age, cur->disease,
-                       col, cur->priority == 1 ? "[EMERGENCY]" : "[NORMAL]",
-                       stat);
+                const char *prioStr = (cur->priority == 1) ? "[EMERGENCY]" : "[NORMAL]   ";
+                printf("  %s%-4d" RESET " %-20s %-4d %-26s "
+                       "%s%-11s" RESET " %-10s\n",
+                       col, cur->id, nBuf, cur->age, dBuf,
+                       col, prioStr, stat);
                 found = 1;
             }
         }
@@ -1012,22 +1048,36 @@ void searchPatient(void)
         printf("  " CYAN "Enter name (or part): " RESET);
         fgets(keyword, sizeof(keyword), stdin);
         stripNewline(keyword);
+
         for (i = 0; i < total; i++) {
             /* POINTER USED HERE */
             struct Patient *cur = (arr + i);
             if (strstr(cur->name, keyword) != NULL) {  /* strstr substring match */
+                if (!found) {
+                    printf(CYAN "\n  %-4s %-20s %-4s %-26s %-11s %-10s\n" RESET,
+                           "ID", "Name", "Age", "Disease", "Priority", "Status");
+                    printf(CYAN "  ───────────────────────────────────────────────────────────────────────────────\n" RESET);
+                }
+                char nBuf[32], dBuf[32];
+                truncateText(nBuf, cur->name, 20);
+                truncateText(dBuf, cur->disease, 26);
                 const char *col = (cur->priority == 1) ? RED : GREEN;
                 const char *stat = (cur->status == 0) ? "Waiting"
                                  : (cur->status == 1) ? "Admitted" : "Discharged";
-                printf("  %s%-6d" RESET " %-22s %-5d %-18s %s%-13s" RESET " %-10s\n",
-                       col, cur->id, cur->name, cur->age, cur->disease,
-                       col, cur->priority == 1 ? "[EMERGENCY]" : "[NORMAL]",
-                       stat);
+                const char *prioStr = (cur->priority == 1) ? "[EMERGENCY]" : "[NORMAL]   ";
+                printf("  %s%-4d" RESET " %-20s %-4d %-26s "
+                       "%s%-11s" RESET " %-10s\n",
+                       col, cur->id, nBuf, cur->age, dBuf,
+                       col, prioStr, stat);
                 found = 1;
             }
         }
     } else {
         printError("Invalid choice.");
+    }
+
+    if (found) {
+        printf(CYAN "  ───────────────────────────────────────────────────────────────────────────────\n" RESET);
     }
 
     if (!found) printWarning("No matching patient found.");
@@ -1092,17 +1142,16 @@ void updatePatient(struct Patient *p) /* POINTER USED HERE */
 }
 
 /* =============================================================
- *  displayAll – Show all patients in a colored table
+ *  displayAll – Show all patients in a clean fixed-width table
  * ============================================================= */
 void displayAll(void)
 {
     FILE *f = fopen(PATIENTS_FILE, "rb");
     if (f == NULL) { printError("No records found."); return; }
 
-    printf(CYAN "  %-4s %-20s %-4s %-3s %-14s %-5s %-11s %-5s %-4s\n" RESET,
-           "ID", "Name", "Age", "G", "Disease", "Prio", "Status", "Ward", "Bed");
-    printf(CYAN "  %-72s\n" RESET,
-           "────────────────────────────────────────────────────────────────────────");
+    printf(CYAN "  %-4s %-20s %-4s %-3s %-26s %-11s %-11s %-5s %-4s\n" RESET,
+           "ID", "Name", "Age", "G", "Disease", "Priority", "Status", "Ward", "Bed");
+    printf(CYAN "  ────────────────────────────────────────────────────────────────────────────────────────────────\n" RESET);
 
     struct Patient p;
     int count = 0;
@@ -1110,6 +1159,12 @@ void displayAll(void)
         const char *col  = (p.priority == 1) ? RED : GREEN;
         const char *stat = (p.status == 0) ? "Waiting"
                          : (p.status == 1) ? "Admitted" : "Discharged";
+        const char *prioStr = (p.priority == 1) ? "[EMERGENCY]" : "[NORMAL]   ";
+
+        char nBuf[32], dBuf[32];
+        truncateText(nBuf, p.name, 20);
+        truncateText(dBuf, p.disease, 26);
+
         char wardStr[8], bedStr[8];
         if (p.wardNo >= 0 && p.bedNo >= 0) {
             sprintf(wardStr, "%d", p.wardNo + 1);
@@ -1118,13 +1173,14 @@ void displayAll(void)
             strcpy(wardStr, "-");
             strcpy(bedStr, "-");
         }
-        printf("  %s%-4d" RESET " %-20s %-4d %-3c %-14s "
-               "%s%-5d" RESET " %-11s %-5s %-4s\n",
-               col, p.id, p.name, p.age, p.gender, p.disease,
-               col, p.priority, stat, wardStr, bedStr);
+        printf("  %s%-4d" RESET " %-20s %-4d %-3c %-26s "
+               "%s%-11s" RESET " %-11s %-5s %-4s\n",
+               col, p.id, nBuf, p.age, p.gender, dBuf,
+               col, prioStr, stat, wardStr, bedStr);
         count++;
     }
     fclose(f);
+    printf(CYAN "  ────────────────────────────────────────────────────────────────────────────────────────────────\n" RESET);
     if (count == 0) printWarning("No patients on record.");
     else printf("\n  " WHITE "Total records: " YELLOW "%d\n" RESET, count);
 }
